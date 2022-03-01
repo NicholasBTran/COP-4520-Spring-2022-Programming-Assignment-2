@@ -37,8 +37,7 @@ class CLHLock implements Lock {
         qnode.locked = true;
         QNode pred = tail.getAndSet(qnode);
         myPred.set(pred);
-        while (pred.locked) {
-        }
+        while (pred.locked) ;
     }
 
     @Override
@@ -107,7 +106,7 @@ public class Problem2 {
             threads.add(t);
         }
 
-        // Run threads for
+        // Run threads for a while: until the number of vase sightings is equal to 10*numGuests
         while (NewThread.counter < numEntries) {
             randomWithNextInt = random.nextInt(numGuests);
             Thread thread = threads.get(randomWithNextInt);
@@ -115,12 +114,12 @@ public class Problem2 {
             queueList.add(thread.getName());
         }
 
+        // A simple check to see if Guests who queue to see the vase, actual get to see the vase.
         // Compare the Queue List and the Entry List to see if the order was preserved.
-        // Set listsMatch flag to false if the lists are not equivalent.
         boolean listsMatch = true;
         for (int i = 0; i < queueList.size(); i++) {
-            //System.out.println(queueList.get(i) + "  \t" + NewThread.entryList.get(i));
             if (!queueList.get(i).equals(NewThread.entryList.get(i))) {
+                // Set listsMatch flag to false if the lists are not equivalent.
                 listsMatch = false;
                 break;
             }
@@ -130,8 +129,9 @@ public class Problem2 {
         long elapsedTime = stopTime - startTime;
         System.out.println("No more guests are waiting to see the vase!");
         System.out.println("Elapsed Time (ms): " + elapsedTime);
-        System.out.println("Lists Match: " + listsMatch);
+        System.out.println("Number of Guests: " + numGuests);
         System.out.println("Expected Vase Sightings: " + numEntries);
         System.out.println("Actual Vase Sightings: " + NewThread.counter);
+        System.out.println("Lists Match: " + listsMatch);
     }
 }
