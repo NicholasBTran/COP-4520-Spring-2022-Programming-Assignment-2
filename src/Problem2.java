@@ -132,6 +132,6 @@ public class Problem2 {
         System.out.println("Number of Guests: " + numGuests);
         System.out.println("Expected Vase Sightings: " + numEntries);
         System.out.println("Actual Vase Sightings: " + NewThread.counter);
-        System.out.println("Lists Match: " + listsMatch);
+        System.out.println("Queue order matches entry order: " + listsMatch);
     }
 }
