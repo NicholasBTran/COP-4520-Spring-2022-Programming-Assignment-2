@@ -8,45 +8,47 @@ import java.util.concurrent.locks.ReentrantLock;
 // Nicholas Tran
 // COP 4520 - Parallel Programming
 // Spring 2022
-// Problem 1: Minotaur�s Birthday Party
+// Problem 1: Minotaur's Birthday Party
 
 class Guest extends Thread {
     AtomicBoolean hasEaten = new AtomicBoolean(false);
     static AtomicBoolean emptyPlate = new AtomicBoolean(true);
-    static Lock lock = new ReentrantLock();
+    static Lock mutex = new ReentrantLock();
 
     public void run() {
-        // Check if the plate is empty, if it is not then eat the cupcake.
-        if (hasEaten.get() == true)
-            ; // Do nothing
-        else if (emptyPlate.compareAndExchange(false, true) == false) {
-            hasEaten.set(true);
+        // Get lock
+        mutex.lock();
+        try {
+            // Check if the plate is empty, if it is not then eat the cupcake.
+            if (!hasEaten.get() && !emptyPlate.compareAndExchange(false, true)) hasEaten.set(true);
+        } finally {
+            mutex.unlock();
         }
     }
 }
 
-// Leader thread keeps track of the total number of Guests guarnteed to have visited the
+// Leader thread keeps track of the total number of Guests guaranteed to have visited the
 // labyrinth.
 class leader extends Guest {
     AtomicInteger counter = new AtomicInteger(0);
 
     public void run() {
-        // hasEaten.compareAndExchange(false, true);
+        // leader.counter should increment only when a new guest is guaranteed to have entered a labyrinth.
         // Check if the plate is empty, if it is increment count and request a new cupcake.
-        if (emptyPlate.compareAndExchange(true, false) == true)
+        if (emptyPlate.compareAndExchange(true, false)) {
             counter.getAndIncrement();
+        }
     }
 }
 
 public class Problem1 {
-
     public static void main(String[] args) {
         long startTime = System.currentTimeMillis();
-        long counter = 0;
+        long counter;
         int numGuests = 10000;
+        int randomWithNextInt;
         ArrayList<Guest> threads = new ArrayList<>();
         Random random = new Random();
-        int randomWithNextInt = random.nextInt();
 
         // Create leader thread
         leader leader = new leader();
@@ -58,7 +60,6 @@ public class Problem1 {
         for (int i = 0; i < numGuests - 1; i++) {
             Guest t = new Guest();
             t.setName("Guest-" + i);
-            t.hasEaten.set(false);
             threads.add(t);
         }
 
@@ -68,22 +69,15 @@ public class Problem1 {
             randomWithNextInt = random.nextInt(numGuests);
             Thread thread = threads.get(randomWithNextInt);
             thread.run();
-
-            try {
-                // Wait for threads to finish (Guests to leave labyrinth).
-                thread.join();
-            } catch (Exception e) {
-                System.out.println("[Exception]: " + e);
-            }
         }
 
         // Check if every thread ran (Guest visited).
         counter = 0;
         for (Guest i : threads) {
-            if (i.hasEaten.get() == true)
-                counter++;
+            if (i.hasEaten.get()) counter++;
         }
 
+        System.out.println("All the guests have entered the labyrinth!");
         System.out.println("Number of Guests: " + numGuests);
         System.out.println("Leader counter: " + leader.counter.get());
         System.out.println("Number of Guests who entered labyrinth: " + counter);
