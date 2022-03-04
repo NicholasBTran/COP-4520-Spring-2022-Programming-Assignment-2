@@ -1,47 +1,41 @@
-import java.io.FileOutputStream;
-import java.util.ArrayList;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-
 // Nicholas Tran
 // COP 4520 - Parallel Programming
 // Spring 2022
 // Problem 2: Minotaur’s Crystal Vase
 
-// An implemenation of a type of queue lock based on the third strategy described in the problem.
+import java.util.ArrayList;
+import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+
+// An implementation of the Mellor-Crummey and Scott MCS lock.
 // Source: Class textbook "The Art of Multiprocessor Programming", Morgan Kaufmann (2020)
-class CLHLock implements Lock {
+class MCSLock implements Lock {
     AtomicReference<QNode> tail;
-    ThreadLocal<QNode> myPred;
     ThreadLocal<QNode> myNode;
 
-    public CLHLock() {
-        tail = new AtomicReference<QNode>(new QNode());
-        myNode = new ThreadLocal<QNode>() {
-            public QNode initialValue() {
-                return new QNode();
-            }
-        };
-        myPred = new ThreadLocal<QNode>() {
-            protected QNode initialValue() {
-                return null;
-            }
-        };
+    public MCSLock() {
+        tail = new AtomicReference<>(null);
+        myNode = ThreadLocal.withInitial(QNode::new);
     }
 
     public void lock() {
         QNode qnode = myNode.get();
-        qnode.locked = true;
         QNode pred = tail.getAndSet(qnode);
-        myPred.set(pred);
-        while (pred.locked) ;
+        if (pred != null) {
+            qnode.locked = true;
+            pred.next = qnode;
+            // wait until predecessor gives up the lock
+            while (qnode.locked) {
+            }
+        }
     }
 
     @Override
-    public void lockInterruptibly() throws InterruptedException {
+    public void lockInterruptibly() {
+
     }
 
     @Override
@@ -50,14 +44,21 @@ class CLHLock implements Lock {
     }
 
     @Override
-    public boolean tryLock(long time, TimeUnit unit) throws InterruptedException {
+    public boolean tryLock(long time, TimeUnit unit) {
         return false;
     }
 
     public void unlock() {
         QNode qnode = myNode.get();
-        qnode.locked = false;
-        myNode.set(myPred.get());
+        if (qnode.next == null) {
+            if (tail.compareAndSet(qnode, null))
+                return;
+            // wait until successor fills in its next field
+            while (qnode.next == null) {
+            }
+        }
+        qnode.next.locked = false;
+        qnode.next = null;
     }
 
     @Override
@@ -67,71 +68,74 @@ class CLHLock implements Lock {
 
     class QNode {
         volatile boolean locked = false;
+        volatile QNode next = null;
     }
 }
 
-class NewThread extends Thread {
-    static Lock mutex = new CLHLock();
+class ViewVase extends Thread {
+    static Lock mutex = new MCSLock();
     static long counter = 0;
-    static ArrayList<String> entryList = new ArrayList<>();
+    static int viewsPerGuest = 10000;
+    int numViews = 0;
 
-    public void run() {
-        // When a thread obtains the lock, increment the counter and add the name to the entry list.
-        mutex.lock();
-        try {
-            counter++;
-            entryList.add(this.getName());
-        } finally {
-            mutex.unlock();
+    public void start() {
+        // Each guest views the vase the same number of times.
+        while (numViews < viewsPerGuest) {
+            // Try to get the lock and enter the vase viewing room.
+            mutex.lock();
+            try {
+                // Keep track of how many times the vase is viewed.
+                counter++;
+                numViews++;
+            } finally {
+                mutex.unlock();
+            }
         }
+    }
+
+    public static void setViewsPerGuest(int n) {
+        viewsPerGuest = n;
     }
 }
 
 public class Problem2 {
 
     public static void main(String[] args) {
-        long startTime = System.currentTimeMillis();
-        final int numGuests = 100000;
-        final int multiplier = 10;
-        int numEntries = numGuests * multiplier;
-        ArrayList<NewThread> threads = new ArrayList<>();
-        ArrayList<String> queueList = new ArrayList<>();
-        Random random = new Random();
-        int randomWithNextInt;
+        int numGuests;
+        int numEntries;
+        long startTime, stopTime, elapsedTime;
+        ArrayList<ViewVase> threads = new ArrayList<>();
+
+        // Read input from user
+        Scanner keyboard = new Scanner(System.in);
+        System.out.println("Enter how many guests (integer):");
+        numGuests = keyboard.nextInt();
+        System.out.println("Enter how many times a guest should visit the vase room (integer):");
+        ViewVase.setViewsPerGuest(keyboard.nextInt());
+        numEntries = numGuests * ViewVase.viewsPerGuest;
+        keyboard.close();
+
+        // Start timer
+        startTime = System.currentTimeMillis();
 
         // Create threads and add them to the list
         for (int i = 0; i < numGuests; i++) {
-            NewThread t = new NewThread();
+            ViewVase t = new ViewVase();
             t.setName("Guest-" + i);
             threads.add(t);
         }
 
-        // Run threads for a while: until the number of vase sightings is equal to 10*numGuests
-        while (NewThread.counter < numEntries) {
-            randomWithNextInt = random.nextInt(numGuests);
-            Thread thread = threads.get(randomWithNextInt);
-            thread.run();
-            queueList.add(thread.getName());
+        for (Thread t : threads) {
+            t.start();
         }
 
-        // A simple check to see if Guests who queue to see the vase, actual get to see the vase.
-        // Compare the Queue List and the Entry List to see if the order was preserved.
-        boolean listsMatch = true;
-        for (int i = 0; i < queueList.size(); i++) {
-            if (!queueList.get(i).equals(NewThread.entryList.get(i))) {
-                // Set listsMatch flag to false if the lists are not equivalent.
-                listsMatch = false;
-                break;
-            }
-        }
-
-        long stopTime = System.currentTimeMillis();
-        long elapsedTime = stopTime - startTime;
-        System.out.println("No more guests are waiting to see the vase!");
-        System.out.println("Elapsed Time (ms): " + elapsedTime);
+        stopTime = System.currentTimeMillis();
+        elapsedTime = stopTime - startTime;
+        System.out.println("\nNo more guests are waiting to see the vase!\n");
         System.out.println("Number of Guests: " + numGuests);
-        System.out.println("Expected Vase Sightings: " + numEntries);
-        System.out.println("Actual Vase Sightings: " + NewThread.counter);
-        System.out.println("Queue order matches entry order: " + listsMatch);
+        System.out.println("Number of sightings per guest: " + ViewVase.viewsPerGuest);
+        System.out.println("Expected Vase Viewings: " + numEntries);
+        System.out.println("Actual Vase Viewings: " + ViewVase.counter);
+        System.out.println("Elapsed Time (ms): " + elapsedTime);
     }
 }

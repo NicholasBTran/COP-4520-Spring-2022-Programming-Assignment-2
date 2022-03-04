@@ -1,26 +1,28 @@
-import java.util.ArrayList;
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 // Nicholas Tran
 // COP 4520 - Parallel Programming
 // Spring 2022
 // Problem 1: Minotaur's Birthday Party
 
-class Guest extends Thread {
-    AtomicBoolean hasEaten = new AtomicBoolean(false);
-    static AtomicBoolean emptyPlate = new AtomicBoolean(true);
-    static Lock mutex = new ReentrantLock();
+import java.util.ArrayList;
+import java.util.Random;
+import java.util.Scanner;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
-    public void run() {
-        // Get lock
+class Guest extends Thread {
+    static Lock mutex = new ReentrantLock();
+    boolean hasEaten = false;
+    static boolean cupcake = true;
+
+    public void start() {
+        // Get lock, which simulates guests entering the maze one at a time.
         mutex.lock();
         try {
             // Check if the plate is empty, if it is not then eat the cupcake.
-            if (!hasEaten.get() && !emptyPlate.compareAndExchange(false, true)) hasEaten.set(true);
+            if (!hasEaten && cupcake) {
+                cupcake = false;
+                hasEaten = true;
+            }
         } finally {
             mutex.unlock();
         }
@@ -30,31 +32,44 @@ class Guest extends Thread {
 // Leader thread keeps track of the total number of Guests guaranteed to have visited the
 // labyrinth.
 class leader extends Guest {
-    AtomicInteger counter = new AtomicInteger(0);
+    int counter = 1;
 
-    public void run() {
-        // leader.counter should increment only when a new guest is guaranteed to have entered a labyrinth.
-        // Check if the plate is empty, if it is increment count and request a new cupcake.
-        if (emptyPlate.compareAndExchange(true, false)) {
-            counter.getAndIncrement();
+    public leader() {
+        super();
+        this.hasEaten = true;
+    }
+
+    public void start() {
+        // The counter represents the number of guests guaranteed to have entered the labyrinth.
+        // Check if the plate is empty, if it is increment counter and request a new cupcake.
+        if (!cupcake) {
+            cupcake = true;
+            counter++;
         }
     }
 }
 
 public class Problem1 {
     public static void main(String[] args) {
-        long startTime = System.currentTimeMillis();
+        long startTime, stopTime, elapsedTime;
         long counter;
-        int numGuests = 10000;
-        int randomWithNextInt;
+        int numGuests;
         ArrayList<Guest> threads = new ArrayList<>();
         Random random = new Random();
+
+        // Read input from user
+        Scanner keyboard = new Scanner(System.in);
+        System.out.println("Enter how many guests (integer):");
+        numGuests = keyboard.nextInt();
+        keyboard.close();
+
+        // Start timer
+        startTime = System.currentTimeMillis();
 
         // Create leader thread
         leader leader = new leader();
         leader.setName("Leader");
         threads.add(leader);
-        leader.hasEaten.set(true);
 
         // Create threads and add them to the list
         for (int i = 0; i < numGuests - 1; i++) {
@@ -64,25 +79,27 @@ public class Problem1 {
         }
 
         // Run threads
-        while (leader.counter.get() < numGuests) {
+        while (leader.counter < numGuests) {
             // Randomly select threads (Guests) to run (enter labyrinth).
-            randomWithNextInt = random.nextInt(numGuests);
-            Thread thread = threads.get(randomWithNextInt);
-            thread.run();
+            Thread thread = threads.get(random.nextInt(numGuests));
+            thread.start();
         }
 
-        // Check if every thread ran (Guest visited).
+        // Count how many guests have eaten a cupcake/entered the labyrinth.
         counter = 0;
         for (Guest i : threads) {
-            if (i.hasEaten.get()) counter++;
+            if (i.hasEaten) counter++;
         }
 
-        System.out.println("All the guests have entered the labyrinth!");
+        if (counter == numGuests)
+            System.out.println("\nAll the guests have entered the labyrinth!\n");
+        else
+            System.out.println("\nUh-oh, some guests didn't enter the labyrinth =(\n");
         System.out.println("Number of Guests: " + numGuests);
-        System.out.println("Leader counter: " + leader.counter.get());
+        System.out.println("Leader counter: " + leader.counter);
         System.out.println("Number of Guests who entered labyrinth: " + counter);
-        long stopTime = System.currentTimeMillis();
-        long elapsedTime = stopTime - startTime;
+        stopTime = System.currentTimeMillis();
+        elapsedTime = stopTime - startTime;
         System.out.println("Elapsed Time (ms): " + elapsedTime);
     }
 }
